@@ -1,0 +1,10 @@
+Package: osmose.extras
+Type: Package
+Title: OSMOSE experimental functions (temporary package)
+Version: 0.1.0
+Author: Ricardo Oliveros-Ramos
+Maintainer: ROR <ricardo.oliveros@gmail.com>
+Description: Temporary experimental functions for OSMOSE
+License: GPL 2
+Encoding: UTF-8
+LazyData: TRUE
