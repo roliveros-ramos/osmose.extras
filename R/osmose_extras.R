@@ -225,6 +225,7 @@ calculateMLF = function(conf, sp) {
   weight = a*size^b
   
   repfile = .getPar(this, "reproduction.season.file")
+  
   fecundity = as.numeric(unlist(read.csv(file.path(attr(repfile, "path"), repfile), 
                                          row.names = 1)))
   isMature = size >= .getPar(this, "species.maturity.size")
@@ -734,7 +735,26 @@ llw = function(cv) 1/(2*cv^2)
   
 }
 
-.readCSV = function(file, ...) read.csv(file.path(attr(file, "path"), file), ...)
+.readCSV = function(file, ...) {
+  
+  .guessSeparator = function(Line) {
+    SEPARATORS = c(equal = "=", semicolon = ";",
+                   coma = ",", colon = ":", tab = "\t")
+    guess = which.min(nchar(lapply(str_split(Line,SEPARATORS), "[", i = 1)))
+    separator = SEPARATORS[guess]
+    
+    return(separator)
+  }
+  
+  config = readLines(file) # read lines
+  sep = names(which.max(table(sapply(config, .guessSeparator))))
+ 
+  file = file.path(attr(file, "path"), file)
+  
+  out = if(sep==",") read.csv(file=file, ...) else read.csv2(file=file, sep=sep, ...)
+  return(out)
+  
+}
 
 
 # OSMOSE package ----------------------------------------------------------
