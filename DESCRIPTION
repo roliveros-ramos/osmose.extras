@@ -1,10 +1,20 @@
 Package: osmose.extras
 Type: Package
 Title: OSMOSE experimental functions (temporary package)
-Version: 0.1.0
+Version: 0.1.0.9001
 Author: Ricardo Oliveros-Ramos
 Maintainer: ROR <ricardo.oliveros@gmail.com>
 Description: Temporary experimental functions for OSMOSE
+Depends: 
+  R (>= 3.00)
+Imports:
+  mgcv,
+  osmose,
+  stats,
+  stringr,
+  utils
+Suggests: 
+  r4ss.selectivity
 License: GPL 2
 Encoding: UTF-8
 LazyData: TRUE

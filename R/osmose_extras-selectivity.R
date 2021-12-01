@@ -1,4 +1,17 @@
 
+.getSelectivity = function(size, this) {
+  
+  par = list(type = .getPar(this, "fisheries.selectivity.type"),
+             L50  = .getPar(this, "fisheries.selectivity.l50"),
+             L75  = .getPar(this, "fisheries.selectivity.l75"),
+             tiny = .getPar(this, "fisheries.selectivity.tiny"))
+  
+  if(is.null(par$tiny)) par$tiny = 1e-3
+  
+  return(.calculateSelectivity(x=size, par=par))
+  
+}
+
 .calculateSelectivity = function(x, par) {
   
   par$L75 = max(1.01*par$L50, par$L75)
