@@ -107,12 +107,12 @@ calculateMLF = function(conf, sp) {
   .calculateMLF = function(fecundity, isMature, weight) {
     
     .mlf = function(delay, fecundity, isMature, weight) {
-      MLF = sum(isMature*fecundity[delay + seq_len(nlife)]*weight)
+      MLF = sum(isMature*fecundity[delay + seq_along(isMature)]*weight)
       return(MLF)
     }
     
     nfec  = length(fecundity)
-    nlife = length(weight)
+    nlife = length(isMature)
     if(nfec <= nlife) {
       fecundity = rep(fecundity, length=nlife+nfec)
       niter = nfec
@@ -121,7 +121,8 @@ calculateMLF = function(conf, sp) {
     }
     nfec = length(fecundity)
     
-    out = sapply(0:niter, .mlf, fecundity=fecundity, isMature=isMature, weight=weight)
+    out = sapply(0:niter, .mlf, fecundity=fecundity, isMature=isMature, 
+                 weight=weight)
     return(out)
   }
   
@@ -198,6 +199,7 @@ calculateMortality = function(conf, sp) {
 rebinning = function(x, y) {
   
   if(is.list(y)) stop("'y' must be a single vector.")
+  if(any(diff(y)==0)) stop("All length bins must be different, check growth parameters.")
   
   .rebinning = function(x, y, k=10000) {
     .mini = function(x, k=100) head(approx(x=x, n=k*length(x)-(k-1))$y, -1)
