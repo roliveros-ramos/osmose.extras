@@ -144,12 +144,39 @@
 
 # Data Parsing ------------------------------------------------------------
 
+.setupInitialization = function(conf) {
+  
+  nsp = .getPar(conf, "simulation.nspecies")
+  
+  spind = .getPar(conf, "species.type") == "focal"
+  spind = gsub(names(spind)[which(spind)], pattern="species.type.sp", replacement = "") 
+  spnames = .getPar(conf, "species.name")[sprintf("species.name.sp%s", spind)]
+  spind = as.numeric(spind)
+  
+  for(sp in spind) {
+    
+    sim = list()
+    sim$cal       = read.cal(conf, sp)
+    sim$biomass   = read.biomass(conf, sp)
+    sim$yield     = read.yield(conf, sp)
+    sim$fecundity = read.fecundity(conf, sp)
+    isp = sprintf("osmose.initialization.data.sp%d", sp)
+    conf[[isp]]   = sim
+    
+  }
+  
+  return(conf)
+  
+}
+
+
 read.cal = function(conf, sp) {
   
   this = .getPar(conf, sp=sp)
   ndt = conf$simulation.time.ndtperyear
   T   = conf$simulation.time.nyear*ndt
   
+  spname = .getPar(this, "species.name")
   landings = read.yield(conf, sp)
   
   harvested = !all(landings==0)
@@ -173,27 +200,56 @@ read.cal = function(conf, sp) {
   b = .getPar(this, "species.length2weight.allometric.power")
   
   file = .getPar(this, "fisheries.catchatlength.file")
-  if(length(file)>1) stop("Only one catch-at-length file must be provided.")
+  msg = sprintf("Only one catch-at-length file must be provided for %s.", spname)
+  if(length(file)>1) stop(msg)
   if(is.null(file)) return(NULL)
   
   file = file.path(attr(file, "path"), file)
   periods = c("year", "quarter", "month", "week")
   out = read.csv(file, check.names = FALSE)
   must = names(out)[names(out) %in% periods]
-  if(length(must)<1) stop("Missing time information in catch-at-length file.")
+  msg = sprintf("Missing time information in %s's catch-at-length file.", spname)
+  if(length(must)<1) stop(msg)
   check = !(must %in% names(out))
-  if(any(check)) stop("Missing time information in catch-at-length file.")
+  if(any(check)) stop(msg)
   length_classes = as.numeric(setdiff(colnames(out), must))
   bad = paste(setdiff(colnames(out), must)[is.na(length_classes)], collapse=", ")
   if(any(is.na(length_classes)))
-    stop(sprintf("Size class marks should be numeric, check: %s.", bad))
+    stop(sprintf("Size class marks should be numeric, check: %s in %s's file.", bad, spname))
   check = !identical(length_classes, sort(length_classes))
-  if(check) stop("Catch-at-length size classes must be in increasing order.")
+  msg = sprintf("Catch-at-length size classes must be in increasing order, check %s's file.", spname)
+  if(check) stop(msg)
   dbin = unique(diff(length_classes))
-  mat = as.matrix(out[, as.character(length_classes)])
   
+  mat = as.matrix(out[, as.character(length_classes)])
+
   ndtcal = .getPar(this, "fisheries.catchatlength.ndtPerYear")
-  if(is.null(ndtcal)) stop("Parameter 'fisheries.catchatlength.ndtPerYear' is missing.")  
+  msg = sprintf("Parameter 'fisheries.catchatlength.ndtPerYear.sp%d' is missing.", sp)
+  if(is.null(ndtcal)) stop(msg)  
+  nT = conf$simulation.time.nyear*ndtcal 
+  
+  msg = sprintf("Catch-at-length data for %s is incomplete, %d rows found and at least %d rows are expected (%d x %d).",
+                spname, nrow(mat), nT, conf$simulation.time.nyear, ndtcal)
+  if(nrow(mat)<nT) stop(msg)
+  msg = sprintf("Only first %d rows of %s's catch-at-length data are used.", nT, spname)
+  if(nrow(mat)>nT) warning(msg)
+  mat = mat[seq_len(nT), ]
+  
+  if(all(is.na(mat))) {
+    
+    msg = sprintf("No catch-at-length data in %s's file is provided, all NAs.", spname)
+    warning(msg)
+    
+    Linf = .getPar(this, "species.linf")
+    bins = pretty(c(0, 0.9*Linf), n=15)
+    dbin = unique(diff(bins))
+    length_classes = 0.5*head(bins, -1) + 0.5*tail(bins, -1)
+    # check for the right filling
+    newmat = matrix(NA, nrow=T, ncol=length(length_classes))
+    output = list(cal=NULL, marks=length_classes, dbin=dbin, mat=newmat, bins=NULL,
+                  harvested=TRUE)
+    
+  }
   
   ix = .time.conv(ndtcal, ndt, nrow(mat), T)
   bins = c(length_classes - dbin, length_classes[length(length_classes)] + dbin)
@@ -212,8 +268,9 @@ read.cal = function(conf, sp) {
   units = landings/ilandings
   if(all(is.na(units))) {
     units = 1 # assume CAL is unbiased
-    warning("No landing data, assuming catch-at-length is unbiased and representing the full landings. 
-            Manually calculate the landings in recommended.")
+    msg = sprintf("No landing data for %s, assuming catch-at-length is unbiased and representing the full landings. 
+            If TRUE, please manually calculate the landings from catch-at-length.", spname)
+    warning(msg)
   }
   
   units[is.na(units)] = 1 # assume unbiased when landing data is not available.
@@ -264,6 +321,12 @@ read.fecundity = function(conf, sp) {
   this = .getPar(conf, sp=sp)
   repfile = .getPar(this, "reproduction.season.file")
   fecundity = as.numeric(unlist(.readCSV(repfile, row.names = 1)))
+  sfec = sum(fecundity) 
+  if(abs(sfec-1)< 1e-2) {
+    warning("Using relative fecundities.")
+    relfec = .getPar(this, "species.relativefecundity")
+    fecundity = relfec*fecundity
+  }
   return(fecundity)
   
 }

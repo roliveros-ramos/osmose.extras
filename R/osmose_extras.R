@@ -11,8 +11,8 @@
 #' @examples
 initialize_osmose = function(input, output=NULL, ...) {
   
-  
   conf = .readConfiguration(input)
+  conf = .setupInitialization(conf)
   
   nsp = .getPar(conf, "simulation.nspecies")
   
@@ -28,10 +28,10 @@ initialize_osmose = function(input, output=NULL, ...) {
   for(sp in spind) {
     
     cat(sprintf("Initializing species %d\n", sp))
+    this = .getPar(conf, sp=sp)
     sim = .simF_ini(conf, sp)
     sim$osmose = .initial_length_dist(sim, sp)
     pars = rbind(pars, as.matrix(sim$osmose))
-    this = .getPar(conf, sp=sp)
     out[[.getPar(this, "species.name")]] = sim
   }
   
