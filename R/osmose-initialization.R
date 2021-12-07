@@ -5,6 +5,7 @@
 .simCatch_ini = function(conf, sp) {
   
   this = .getPar(conf, sp=sp)
+  dat  = .getPar(this, par="osmose.initialization.data")
   ndt = conf$simulation.time.ndtperyear
   A = .getPar(this, "species.lifespan")
   a = .getPar(this, "species.length2weight.condition.factor")
@@ -18,16 +19,14 @@
   T = 5*length(age)
   C = length(age)
   
-  CAL = read.cal(conf, sp=sp)
+  CAL = dat$cal
   if(is.null(CAL)) return(NULL)
   harvested = CAL$harvested
-  BIO = read.biomass(conf, sp)
-  fecundity = read.fecundity(conf, sp)
+  BIO = dat$biomass
+  fecundity = dat$fecundity
   
   rF = fecundity[1:ndt]/sum(fecundity[1:ndt])
   bioguess = .bioguess(x=BIO, ndt=ndt)
-  
-  
   
   trans = rebinning(CAL$bins, VB(age_bins, this, method=3))
   cal = CAL$mat %*% trans
@@ -104,6 +103,8 @@
   
   Fguess = sum(yield[pind]/biomass[pind])
   
+  harvested = !all(yield[pind]< 1e-3) 
+  
   output = list(pop=pop[pind, ], catch=catch[pind, ], R=R, 
                 biomass=biomass[pind], yield=yield[pind], F=Fseason,
                 dist = pop[xind ,], distB = 1e-6*pop[xind ,]*weight, 
@@ -115,9 +116,14 @@
   return(output)
   
 }
+
 .simF_ini = function(conf, sp, tiny=1e-3, cv=c(0.1, 0.1)) {
   
+  sim = .simCatch_ini(conf, sp)
+  if(!isTRUE(sim$harvested)) return(sim)
+  
   this = .getPar(conf, sp=sp)
+  dat  = .getPar(this, par="osmose.initialization.data")
   ndt = conf$simulation.time.ndtperyear
   A = .getPar(this, "species.lifespan")
   a = .getPar(this, "species.length2weight.condition.factor")
@@ -131,17 +137,14 @@
   T = 5*length(age)
   C = length(age)
   
-  CAL = read.cal(conf, sp=sp)
-  harvested = if(is.null(CAL)) TRUE else CAL$harvested
-  if(!isTRUE(harvested)) return(.simCatch_ini(conf, sp))
-  BIO = read.biomass(conf, sp)
-  fecundity = read.fecundity(conf, sp)
-  
+  CAL = dat$cal
+  BIO = dat$biomass
+  fecundity = dat$fecundity
   rF = fecundity[1:ndt]/sum(fecundity[1:ndt])
   biofit   = .bioguess(x=BIO, ndt=ndt, ts=TRUE)
   bioguess = .bioguess(x=BIO, ndt=ndt)
   
-  yield_obs   = read.yield(conf, sp)
+  yield_obs   = dat$yield
   yield_obs   = rep(yield_obs[1:ndt], length=T)
   
   weight = a*size^b
@@ -150,20 +153,16 @@
   
   xn = which.max(size >= .getPar(this, "observed.biomass.cutoff.size")) - 1
   
-  sim = .simCatch_ini(conf, sp)
-  
   if(is.null(sim)) {
     
     sel = .getSelectivity(size, this) # creado con parametros
     Fseason = yield_obs[1:ndt]/sum(yield_obs[1:ndt])
-    
     ini = exp(-cumsum(c(0,Ma[-length(Ma)]/ndt)))
     inibio = 1e-6*sum(ini*weight)
     R = ndt*bioguess/inibio
     xdist = R*ini/sum(ini)
     
     sim = list(R=R, Fguess=sum(yield_obs[1:ndt]/bioguess))
-    
     
   } else {
     
@@ -173,6 +172,7 @@
     sel = pmax(c(ss_emp$selectivity), tiny)
     Fseason = sim$F
     xdist = sim$dist
+    
   }
   
   .simF = function(par, value=FALSE) {
@@ -227,7 +227,7 @@
                             fn = .simF, method = "L-BFGS-B")
   
   output = c(.simF(opt$par, value=TRUE),  opt=list(opt))
-  class(output) = c("osmose.init",class(output))
+  class(output) = c("osmose.init", class(output))
   return(output)
   
 }
