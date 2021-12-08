@@ -27,7 +27,7 @@
   
   rF = fecundity[1:ndt]/sum(fecundity[1:ndt])
   bioguess = .bioguess(x=BIO, ndt=ndt)
-  
+
   trans = rebinning(CAL$bins, VB(age_bins, this, method=3))
   cal = CAL$mat %*% trans
   weight = a*size^b
@@ -51,7 +51,7 @@
                   dist = rep(0, C), distB = rep(0, C), 
                   selectivity=rep(0, C), age=age, size=size,
                   Fguess=0, observed=list(biomass=bioguess, yield=yield_obs[1:ndt]),
-                  bins=list(age=age_bins, size=size_bins), harvested=FALSE)
+                  bins=list(age=age_bins, size=size_bins), harvested=FALSE, larvalM=0)
     
     class(output) = c("osmose.init",class(output))
     
@@ -112,6 +112,13 @@
                 Fguess=Fguess, observed=list(biomass=bioguess, yield=yield_obs[1:ndt]),
                 bins=list(age=age_bins, size=size_bins), harvested=harvested)
   
+  isMature = size >= .getPar(this, "species.maturity.size")
+  eggs   = rowSums(1e6*fecundity*t(t(output$pop)*isMature))
+  larvae = output$R*rF
+  Mlarval = mean(-log(larvae/eggs), na.rm=TRUE)
+  
+  output$larvalM = Mlarval
+  
   class(output) = c("osmose.init",class(output))
   return(output)
   
@@ -169,11 +176,13 @@
     es = empirical_selectivity(matrix(sim$selectivity, nrow=1), fleet = "sim",
                                years = 1, bins = sim$size)
     ss_emp = suppressMessages(fit_selectivity(es, pattern=27, k=5))
-    sel = pmax(c(ss_emp$selectivity), tiny)
+    sel = ss_emp$selectivity
     Fseason = sim$F
     xdist = sim$dist
     
   }
+  
+  sel[sel<tiny] = 0
   
   .simF = function(par, value=FALSE) {
     
@@ -187,7 +196,7 @@
     
     for(t in 1:T) {
       it = ((t-1) %% ndt) + 1
-      Ft = F*Fseason[it]*sel
+      Ft = F*Fseason[it]*as.numeric(sel)
       Zt = Ma/ndt + Ft
       tmp = pop[t, ]*exp(-Zt) 
       catch[t, ] = pop[t, ]*(Ft/Zt)*(1-exp(-Zt)) 
@@ -227,6 +236,14 @@
                             fn = .simF, method = "L-BFGS-B")
   
   output = c(.simF(opt$par, value=TRUE),  opt=list(opt))
+  
+  isMature = size >= .getPar(this, "species.maturity.size")
+  eggs   = rowSums(1e6*fecundity*t(t(output$pop)*isMature))
+  larvae = output$R*rF
+  Mlarval = mean(-log(larvae/eggs), na.rm=TRUE)
+  
+  output$larvalM = Mlarval
+    
   class(output) = c("osmose.init", class(output))
   return(output)
   
