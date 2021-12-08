@@ -179,6 +179,11 @@ read.cal = function(conf, sp) {
   spname = .getPar(this, "species.name")
   landings = read.yield(conf, sp)
   
+  start = .getPar(conf, par="simulation.time.start")
+  if(is.null(start)) start = attr(landings, "start")
+  
+  time = start + seq(from=0.5/ndt, by=1/ndt, length=T)
+  
   harvested = !all(landings==0)
   
   if(!isTRUE(harvested)) {
@@ -191,7 +196,7 @@ read.cal = function(conf, sp) {
     newmat = matrix(0, nrow=T, ncol=length(length_classes))
     
     output = list(cal=NULL, marks=length_classes, dbin=dbin, mat=newmat, bins=bins,
-                  harvested=FALSE)
+                  harvested=FALSE, time=time)
     return(output)
     
   }
@@ -231,7 +236,7 @@ read.cal = function(conf, sp) {
   msg = sprintf("Catch-at-length data for %s is incomplete, %d rows found and at least %d rows are expected (%d x %d).",
                 spname, nrow(mat), nT, conf$simulation.time.nyear, ndtcal)
   if(nrow(mat)<nT) stop(msg)
-  msg = sprintf("Only first %d rows of %s's catch-at-length data are used.", nT, spname)
+  msg = sprintf("Only first %d rows of %s's catch-at-length data are used for %d years of simulation.", nT, spname, T/ndt)
   if(nrow(mat)>nT) warning(msg)
   mat = mat[seq_len(nT), ]
   
@@ -247,12 +252,13 @@ read.cal = function(conf, sp) {
     # check for the right filling
     newmat = matrix(NA, nrow=T, ncol=length(length_classes))
     output = list(cal=NULL, marks=length_classes, dbin=dbin, mat=newmat, bins=NULL,
-                  harvested=TRUE)
+                  harvested=TRUE, time=time)
     
   }
   
   ix = .time.conv(ndtcal, ndt, nrow(mat), T)
   bins = c(length_classes - dbin, length_classes[length(length_classes)] + dbin)
+  bins = pmax(0, bins)
   
   isize = pmax(bins, .getPar(this, "egg.size")) 
   
@@ -277,8 +283,34 @@ read.cal = function(conf, sp) {
   
   newmat = newmat*units
   
-  output = list(cal=out, marks=length_classes, dbin=dbin, mat=newmat, bins=bins, 
-                harvested=TRUE)
+  # check for incomplete rows
+  
+  # check for maximum size
+  
+  Lmax = ncol(newmat) - which.max(rev(diff(cumsum(colSums(newmat, na.rm=TRUE))))>0)
+  lmax = length_classes[Lmax+1]
+  Lmax = min(ncol(newmat), Lmax + 3)
+  
+  marks = length_classes[seq_len(Lmax)]
+  bins = c(marks - dbin, marks[length(marks)] + dbin)
+  bins = pmax(0, bins)
+  
+  newmat = newmat[, seq_len(Lmax)]
+  linf = VB(.getPar(this, "species.lifespan"), this)
+  ratio = linf/lmax
+  
+  iinf = which.min((marks - linf)^2)
+  icat = cumsum(colSums(wmat, na.rm=TRUE))[c(iinf, Lmax)]
+  irat = icat[1]/icat[2]
+  
+  if(ratio<1) {
+    msg = sprintf("Maximum length for %s (%0.1f cm) is lower than maximum reported size in landings (%0.1fcm) and %0.1f%% of Linf (%0.1fcm). Only %0.1f%% of landings are used! Check catch-at-length data and growth parameters.",
+                  .getPar(this, "species.name"), linf, lmax, 100*linf/.getPar(this, "species.Linf"), .getPar(this, "species.Linf"), 100*irat)
+    warning(msg)
+  }
+  
+  output = list(cal=out, marks=marks, dbin=dbin, mat=newmat, bins=bins, harvested=TRUE, time=time)
+  
   return(output)
 }
 
@@ -312,6 +344,12 @@ read.yield = function(conf, sp) {
   if(is.null(ndtbio)) stop("Parameter 'fisheries.yield.ndtPerYear' is missing.")
   ix = .time.conv(ndtbio, ndt, nrow(bioref), T)
   biomass = ix$w*bioref[ix$ind, ivar]
+  
+  iyear = 0
+  if(!is.null(bioref$year)) iyear = min(bioref$year, na.rm=TRUE)
+  
+  attr(biomass, "start") = iyear
+  
   return(biomass)
   
 }
