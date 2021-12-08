@@ -10,9 +10,13 @@
 #'
 #' @examples
 initialize_osmose = function(input, output=NULL, ...) {
+ 
+  ow = options("warn")
+  options(warn=1)
+  on.exit(options(ow))
   
   conf = .readConfiguration(input)
-  conf = .setupInitialization(conf)
+  # conf = .setupInitialization(conf)
   
   nsp = .getPar(conf, "simulation.nspecies")
   
@@ -27,12 +31,26 @@ initialize_osmose = function(input, output=NULL, ...) {
   
   for(sp in spind) {
     
-    cat(sprintf("Initializing species %d\n", sp))
     this = .getPar(conf, sp=sp)
+    iSpName = .getPar(this, "species.name")
+    
+    cat(sprintf("\nInitializing species %d (%s)\n", sp, iSpName))
+    
+    sim = list()
+    sim$cal       = read.cal(conf, sp)
+    sim$biomass   = read.biomass(conf, sp)
+    sim$yield     = read.yield(conf, sp)
+    sim$fecundity = read.fecundity(conf, sp)
+    isp = sprintf("osmose.initialization.data.sp%d", sp)
+    conf[[isp]]   = sim
+    
+    this = .getPar(conf, sp=sp)
+    
     sim = .simF_ini(conf, sp)
     sim$osmose = .initial_length_dist(sim, sp)
     pars = rbind(pars, as.matrix(sim$osmose))
-    out[[.getPar(this, "species.name")]] = sim
+    out[[iSpName]] = sim
+    
   }
   
   pars = as.data.frame(pars)
@@ -42,7 +60,7 @@ initialize_osmose = function(input, output=NULL, ...) {
   class(xoutput) = c("osmose.initialization", class(xoutput))
   
   if(!is.null(output)) osmose::write_osmose(pars, file=output, sep=" = ")
-    
+  
   return(invisible(xoutput))
   
 }
