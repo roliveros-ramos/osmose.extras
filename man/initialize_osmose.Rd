@@ -4,7 +4,7 @@
 \alias{initialize_osmose}
 \title{Create initialization file for an OSMOSE configuration}
 \usage{
-initialize_osmose(input, output = NULL, ...)
+initialize_osmose(input, output = NULL, test = FALSE, ...)
 }
 \arguments{
 \item{input}{Filename of the main configuration file}

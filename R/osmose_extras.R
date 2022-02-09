@@ -9,7 +9,7 @@
 #' @export
 #'
 #' @examples
-initialize_osmose = function(input, output=NULL, ...) {
+initialize_osmose = function(input, output=NULL, test=FALSE, ...) {
  
   ow = options("warn")
   options(warn=1)
@@ -41,20 +41,23 @@ initialize_osmose = function(input, output=NULL, ...) {
     sim$biomass   = read.biomass(conf, sp)
     sim$yield     = read.yield(conf, sp)
     sim$fecundity = read.fecundity(conf, sp)
+    sim$bioguess  = .getPar(.getPar(conf, sp=sp), "observed.biomass.guess")
     isp = sprintf("osmose.initialization.data.sp%d", sp)
     conf[[isp]]   = sim
     
     this = .getPar(conf, sp=sp)
     
-    sim = .simF_ini(conf, sp)
+    sim = .simF_ini(conf, sp, test=test)
     sim$osmose = .initial_length_dist(sim, sp)
     pars = rbind(pars, as.matrix(sim$osmose))
+    # pars = rbind(pars, )
     out[[iSpName]] = sim
     
   }
   
   pars = as.data.frame(pars)
   colnames(pars) = NULL
+  pars = pars[order(rownames(pars)), ]
   
   xoutput = list(par=pars, init=out)
   class(xoutput) = c("osmose.initialization", class(xoutput))

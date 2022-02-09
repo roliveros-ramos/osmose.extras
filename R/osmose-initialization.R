@@ -26,7 +26,7 @@
   fecundity = dat$fecundity
   
   rF = fecundity[1:ndt]/sum(fecundity[1:ndt])
-  bioguess = .bioguess(x=BIO, ndt=ndt)
+  bioguess = .bioguess(x=dat, ndt=ndt)
 
   trans = rebinning(CAL$bins, VB(age_bins, this, method=3))
   cal = CAL$mat %*% trans
@@ -113,7 +113,7 @@
                 bins=list(age=age_bins, size=size_bins), harvested=harvested)
   
   isMature = size >= .getPar(this, "species.maturity.size")
-  eggs   = rowSums(1e6*fecundity*t(t(output$pop)*isMature))
+  eggs   = rowSums(1e6*fecundity[1:ndt]*t(t(output$pop)*isMature))
   larvae = output$R*rF
   Mlarval = mean(-log(larvae/eggs), na.rm=TRUE)
   
@@ -124,10 +124,11 @@
   
 }
 
-.simF_ini = function(conf, sp, tiny=1e-3, cv=c(0.1, 0.1)) {
+.simF_ini = function(conf, sp, tiny=1e-3, cv=c(0.1, 0.1), test=FALSE) {
   
   sim = .simCatch_ini(conf, sp)
-  if(!isTRUE(sim$harvested)) return(sim)
+  if(!isTRUE(sim$harvested) & !is.null(sim)) return(sim)
+  if(isTRUE(test)) return(sim)
   
   this = .getPar(conf, sp=sp)
   dat  = .getPar(this, par="osmose.initialization.data")
@@ -148,8 +149,8 @@
   BIO = dat$biomass
   fecundity = dat$fecundity
   rF = fecundity[1:ndt]/sum(fecundity[1:ndt])
-  biofit   = .bioguess(x=BIO, ndt=ndt, ts=TRUE)
-  bioguess = .bioguess(x=BIO, ndt=ndt)
+  biofit   = .bioguess(x=dat, ndt=ndt, ts=TRUE)
+  bioguess = .bioguess(x=dat, ndt=ndt)
   
   yield_obs   = dat$yield
   yield_obs   = rep(yield_obs[1:ndt], length=T)
@@ -238,7 +239,7 @@
   output = c(.simF(opt$par, value=TRUE),  opt=list(opt))
   
   isMature = size >= .getPar(this, "species.maturity.size")
-  eggs   = rowSums(1e6*fecundity*t(t(output$pop)*isMature))
+  eggs   = rowSums(1e6*fecundity[1:ndt]*t(t(output$pop)*isMature))
   larvae = output$R*rF
   Mlarval = mean(-log(larvae/eggs), na.rm=TRUE)
   
@@ -274,14 +275,16 @@ llw = function(cv) 1/(2*cv^2)
   out = c(round(bio_ini, 1), 
           paste(format(bio_rel, scientific = FALSE), collapse=", "), 
           paste(round(head(bins, -1), 2), collapse=","),
-          paste(round(tl_sp, 2), collapse=", "))
-  dim(out) = c(4, 1)
+          paste(round(tl_sp, 2), collapse=", "),
+          round(sim$larvalM, 3))
+  dim(out) = c(length(out), 1)
   
   out = as.data.frame(out)
   rownames(out) = sprintf(c("population.initialization.biomass.sp%d",
                             "population.initialization.relativebiomass.sp%d",
                             "population.initialization.size.sp%d",
-                            "population.initialization.tl.sp%d"), sp)
+                            "population.initialization.tl.sp%d",
+                            "mortality.additional.larva.rate.sp%d"), sp)
   colnames(out) = NULL
   
   return(out)

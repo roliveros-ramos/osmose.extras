@@ -89,10 +89,10 @@
 
 # Internal ----------------------------------------------------------------
 
-.getPar = function(conf, par, sp=NULL) {
+.getPar = function(conf, par, sp=NULL, invert=FALSE) {
   if(!is.null(sp)) par = sprintf(".sp%d$", sp)
   par = tolower(par)
-  out = conf[grep(names(conf), pattern=par)]
+  out = conf[grep(names(conf), pattern=par, invert=invert)]
   if(length(out)==1) out = out[[1]]
   if(length(out)==0) out = NULL
   return(out)
@@ -109,12 +109,20 @@
 }
 
 .bioguess = function(x, ndt, ts=FALSE) {
-  if(all(is.na(x))) stop("No biomass information is provided.") # check
-  out_ts = x[1:ndt]
+  bio = x$biomass
+  bguess = x$bioguess
+  if(!is.null(bguess)) {
+    out = bguess
+    out_ts = rep(NA, ndt)
+    out_ts[1] = out
+    if(isTRUE(ts)) return(out_ts) else return(out)
+  }
+  if(all(is.na(bio))) stop("No biomass information is provided.") # check
+  out_ts = bio[1:ndt]
   out = mean(out_ts, na.rm=TRUE)
   if(is.na(out)) {
     warning("No biomass information for the first year, using average of time series.")
-    out = mean(x, na.rm=TRUE)
+    out = mean(bio, na.rm=TRUE)
     out_ts = rep(NA, ndt)
     out_ts[1] = out
   }
@@ -132,10 +140,10 @@
     return(separator)
   }
   
+  file = file.path(attr(file, "path"), file)
+  
   config = readLines(file) # read lines
   sep = names(which.max(table(sapply(config, .guessSeparator))))
-  
-  file = file.path(attr(file, "path"), file)
   
   out = if(sep==",") read.csv(file=file, ...) else read.csv2(file=file, sep=sep, ...)
   return(out)
@@ -160,6 +168,7 @@
     sim$biomass   = read.biomass(conf, sp)
     sim$yield     = read.yield(conf, sp)
     sim$fecundity = read.fecundity(conf, sp)
+    sim$bioguess  = .getPar(.getPar(conf, sp=sp), "observed.biomass.guess")
     isp = sprintf("osmose.initialization.data.sp%d", sp)
     conf[[isp]]   = sim
     
@@ -171,6 +180,8 @@
 
 
 read.cal = function(conf, sp) {
+  
+  MSG = NULL
   
   this = .getPar(conf, sp=sp)
   ndt = conf$simulation.time.ndtperyear
@@ -237,7 +248,7 @@ read.cal = function(conf, sp) {
                 spname, nrow(mat), nT, conf$simulation.time.nyear, ndtcal)
   if(nrow(mat)<nT) stop(msg)
   msg = sprintf("Only first %d rows of %s's catch-at-length data are used for %d years of simulation.", nT, spname, T/ndt)
-  if(nrow(mat)>nT) warning(msg)
+  if(nrow(mat)>nT) MSG = c(MSG, msg)
   mat = mat[seq_len(nT), ]
   
   if(all(is.na(mat))) {
@@ -276,7 +287,7 @@ read.cal = function(conf, sp) {
     units = 1 # assume CAL is unbiased
     msg = sprintf("No landing data for %s, assuming catch-at-length is unbiased and representing the full landings. 
             If TRUE, please manually calculate the landings from catch-at-length.", spname)
-    warning(msg)
+    MSG = c(MSG, msg)
   }
   
   units[is.na(units)] = 1 # assume unbiased when landing data is not available.
@@ -288,26 +299,43 @@ read.cal = function(conf, sp) {
   # check for maximum size
   
   Lmax = ncol(newmat) - which.max(rev(diff(cumsum(colSums(newmat, na.rm=TRUE))))>0)
-  lmax = length_classes[Lmax+1]
   Lmax = min(ncol(newmat), Lmax + 3)
+  
+  imax = which.max(cumsum(colSums(wmat, na.rm=TRUE))/sum(wmat, na.rm=TRUE) > 0.999)
+  lmax_cal = length_classes[imax]
+  
+  Amax = .getPar(this, "species.lifespan")
+  Linf = .getPar(this, "species.Linf")
   
   marks = length_classes[seq_len(Lmax)]
   bins = c(marks - dbin, marks[length(marks)] + dbin)
   bins = pmax(0, bins)
   
   newmat = newmat[, seq_len(Lmax)]
-  linf = VB(.getPar(this, "species.lifespan"), this)
-  ratio = linf/lmax
+  lmax_pop = VB(Amax, this)
   
-  iinf = which.min((marks - linf)^2)
+  ratio = VB(Amax+0.5, this)/lmax_cal
+  
+  iinf = which.min((marks - lmax_pop)^2)
   icat = cumsum(colSums(wmat, na.rm=TRUE))[c(iinf, Lmax)]
   irat = icat[1]/icat[2]
   
-  if(ratio<1) {
-    msg = sprintf("Maximum length for %s (%0.1f cm) is lower than maximum reported size in landings (%0.1fcm) and %0.1f%% of Linf (%0.1fcm). Only %0.1f%% of landings are used! Check catch-at-length data and growth parameters.",
-                  .getPar(this, "species.name"), linf, lmax, 100*linf/.getPar(this, "species.Linf"), .getPar(this, "species.Linf"), 100*irat)
-    warning(msg)
-  }
+  # validation
+  msg1 = sprintf("Maximum length for %s in the model (%0.1f cm at %d years) is lower than maximum reported size in landings (%0.2fcm), check catch-at-length data.",
+                 .getPar(this, "species.name"), lmax_pop, Amax, lmax_cal)
+  msg2 = sprintf("Maximum length for %s in the model (%0.1f cm at %d years) is %0.1f%% of Linf (%0.1fcm), check growth parameters.",
+                 .getPar(this, "species.name"), lmax_pop, Amax, 100*lmax_pop/Linf, Linf)
+  msg3 = sprintf("Only %0.1f%% of landings are used! Check catch-at-length data and growth parameters.",
+                 100*irat)
+  
+  msg = NULL
+  if(ratio<1) msg = c(msg, msg1)
+  if(lmax_pop/Linf<0.9) msg = c(msg, msg2)
+  if(irat<0.99) msg = c(msg, msg3)
+  
+  MSG = c(MSG, msg)
+  
+  if(!is.null(MSG)) warning(paste(MSG, collapse="\n"))
   
   output = list(cal=out, marks=marks, dbin=dbin, mat=newmat, bins=bins, harvested=TRUE, time=time)
   
