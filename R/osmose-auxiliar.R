@@ -7,9 +7,8 @@
 #' @return
 #' @export
 #'
-osmose_grid = function(conf, ...) {
+osmose_grid = function(conf, center=TRUE, ...) {
   
-  center = FALSE
   lat = c(.getPar(conf, "grid.lowright.lat"),
           .getPar(conf, "grid.upleft.lat"))
   lon = c(.getPar(conf, "grid.upleft.lon"),
