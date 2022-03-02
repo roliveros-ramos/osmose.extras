@@ -4,7 +4,7 @@
 \alias{osmose_grid}
 \title{create OSMOSE ncdf grid (in development)}
 \usage{
-osmose_grid(conf, ...)
+osmose_grid(conf, center = TRUE, ...)
 }
 \arguments{
 \item{conf}{OSMOSE configuration}

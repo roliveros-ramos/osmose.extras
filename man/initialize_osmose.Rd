@@ -4,12 +4,55 @@
 \alias{initialize_osmose}
 \title{Create initialization file for an OSMOSE configuration}
 \usage{
-initialize_osmose(input, output = NULL, test = FALSE, ...)
+initialize_osmose(
+  input,
+  file,
+  type = "internannual",
+  parameters = NULL,
+  output = NULL,
+  log = "osmose.log",
+  version = NULL,
+  osmose = NULL,
+  java = "java",
+  options = NULL,
+  verbose = TRUE,
+  clean = TRUE,
+  force = FALSE,
+  run = TRUE,
+  append = FALSE,
+  ...
+)
 }
 \arguments{
-\item{input}{Filename of the main configuration file}
+\item{input}{Filename of the main OSMOSE configuration file}
 
-\item{output}{Ouput file containing the initialization configuration}
+\item{file}{File to write the initialization configuration}
+
+\item{type}{}
+
+\item{parameters}{}
+
+\item{output}{}
+
+\item{log}{}
+
+\item{version}{}
+
+\item{osmose}{}
+
+\item{java}{}
+
+\item{options}{}
+
+\item{verbose}{}
+
+\item{clean}{}
+
+\item{force}{}
+
+\item{run}{}
+
+\item{append}{}
 
 \item{...}{}
 }
