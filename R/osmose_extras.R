@@ -1,70 +1,56 @@
 
 #' Create initialization file for an OSMOSE configuration
 #'
-#' @param input Filename of the main configuration file
-#' @param output Ouput file containing the initialization configuration
+#' @param input Filename of the main OSMOSE configuration file
+#' @param file File to write the initialization configuration
+#' @param type 
+#' @param parameters 
+#' @param output 
+#' @param log 
+#' @param version 
+#' @param osmose 
+#' @param java 
+#' @param options 
+#' @param verbose 
+#' @param clean 
+#' @param force 
+#' @param run 
+#' @param append 
 #' @param ... 
 #'
 #' @return
 #' @export
 #'
 #' @examples
-initialize_osmose = function(input, output=NULL, test=FALSE, ...) {
- 
-  ow = options("warn")
-  options(warn=1)
-  on.exit(options(ow))
+initialize_osmose = function(input, file, type="internannual", parameters = NULL, output = NULL, 
+                             log = "osmose.log", version = NULL, osmose = NULL, 
+                             java = "java", options = NULL, verbose = TRUE, 
+                             clean = TRUE, force = FALSE, run=TRUE, append=FALSE, 
+                             ...) {
+
+  input = suppressWarnings(normalizePath(input, mustWork=TRUE))
+  file  = suppressWarnings(normalizePath(file))
   
-  conf = .readConfiguration(input)
-  # conf = .setupInitialization(conf)
-  
-  nsp = .getPar(conf, "simulation.nspecies")
-  
-  spind = .getPar(conf, "species.type") == "focal"
-  spind = gsub(names(spind)[which(spind)], pattern="species.type.sp", replacement = "") 
-  spnames = .getPar(conf, "species.name")[sprintf("species.name.sp%s", spind)]
-  spind = as.numeric(spind)
-  
-  out = vector("list", nsp)
-  names(out) = spnames
-  pars = NULL
-  
-  for(sp in spind) {
-    
-    this = .getPar(conf, sp=sp)
-    iSpName = .getPar(this, "species.name")
-    
-    cat(sprintf("\nInitializing species %d (%s)\n", sp, iSpName))
-    
-    sim = list()
-    sim$cal       = read.cal(conf, sp)
-    sim$biomass   = read.biomass(conf, sp)
-    sim$yield     = read.yield(conf, sp)
-    sim$fecundity = read.fecundity(conf, sp)
-    sim$bioguess  = .getPar(.getPar(conf, sp=sp), "observed.biomass.guess")
-    isp = sprintf("osmose.initialization.data.sp%d", sp)
-    conf[[isp]]   = sim
-    
-    this = .getPar(conf, sp=sp)
-    
-    sim = .simF_ini(conf, sp, test=test)
-    sim$osmose = .initial_length_dist(sim, sp)
-    pars = rbind(pars, as.matrix(sim$osmose))
-    # pars = rbind(pars, )
-    out[[iSpName]] = sim
-    
+  if(identical(input, file)) {
+    bck = paste(input, ".bkg", format(Sys.time(), format="%y%m%d%H%M%S"), sep="")
+    file.copy(from=input, to=bck)
   }
   
-  pars = as.data.frame(pars)
-  colnames(pars) = NULL
-  pars = pars[order(rownames(pars)), ]
+  out = switch(type,
+    "climatology"  = init_firstyear(input=input, file=file, parameters=parameters, output=output, 
+                          log=log, version=version, osmose=osmose, 
+                          java=java, options=options, verbose=verbose, 
+                          clean=clean, force=force, run=run, append=append, ...),
+    "internannual" = init_sofia(input=input, file=file, test=run, ...),
+    stop(sprintf("Type='%s' is not supported.", type))
+  )  
+
+  # write the output
+  msg = sprintf("# OSMOSE initialization configuration - do not edit by hand (%s)\n", date())
+  cat(msg, file=file, append=append)
+  suppressWarnings(write_osmose(out, file=file, sep=" = ", append=TRUE))
   
-  xoutput = list(par=pars, init=out)
-  class(xoutput) = c("osmose.initialization", class(xoutput))
-  
-  if(!is.null(output)) osmose::write_osmose(pars, file=output, sep=" = ")
-  
-  return(invisible(xoutput))
-  
+    return(invisible(out))
+    
 }
 

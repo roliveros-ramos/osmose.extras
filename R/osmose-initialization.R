@@ -1,4 +1,157 @@
 
+# Initialization methods --------------------------------------------------
+
+
+init_firstyear = function(input, file, parameters = NULL, output = NULL, 
+                          log = "osmose.log", version = NULL, osmose = NULL, 
+                          java = "java", options = NULL, verbose = TRUE, 
+                          clean = TRUE, force = FALSE, run=TRUE, append=FALSE, ...) {
+  
+  parameters = paste("-Poutput.restart.enabled=TRUE", parameters)
+  
+  if(isTRUE(run)) {
+    run_osmose(input=input, parameters=parameters, output=output, log=log,
+               version=version, osmose=osmose, java=java,
+               options=options, verbose=verbose, clean=clean, force=force)
+  }
+  
+  rpath = file.path(output, "restart")
+  conf = .readConfiguration(input)
+  rfiles = dir(path=rpath, pattern = "\\.nc.*")
+  nf = length(rfiles)
+
+  spp       = NULL 
+  abundance = NULL
+  weight    = NULL
+  length    = NULL
+  tl        = NULL
+  age       = NULL
+  
+  for(rfile in rfiles) {
+    
+    nc = nc_open(file.path(rpath, rfile))
+    
+    spp       = c(spp, ncvar_get(nc, "species"))
+    abundance = c(abundance, ncvar_get(nc, "abundance"))
+    weight    = c(weight, ncvar_get(nc, "weight"))
+    length    = c(length, ncvar_get(nc, "length"))
+    tl        = c(tl, ncvar_get(nc, "trophiclevel"))
+    age       = c(age, ncvar_get(nc, "age"))
+    
+    nc_close(nc)
+    
+  }
+  
+  biomass = 1e-6*abundance*weight
+  
+  nsp = .getPar(conf, "simulation.nspecies")
+  
+  pars = list()
+  for(isp in seq_len(nsp)-1) {
+    
+    ind = (spp == isp)
+    iabundance = abundance[ind]
+    ibiomass = biomass[ind]
+    ilength = length[ind]
+    itl = tl[ind]
+    iage = age[ind]
+    this = .getPar(conf, sp=isp)
+    
+    xabundance = rowsum(iabundance, group = iage)
+    xbiomass   = rowsum(ibiomass, group = iage)
+    xlength    = rowsum(ilength*iabundance, group = iage)/xabundance
+    xtl        = rowsum(itl*iabundance, group = iage)/xabundance
+    xage       = as.numeric(rownames(xabundance))
+    
+    bio_ini = sum(xbiomass)
+    bio_rel = as.numeric(xbiomass/bio_ini)
+    
+    tl_sp = as.numeric(xtl)
+    
+    out = c(round(bio_ini/nf, 1), 
+            paste(format(bio_rel, scientific = FALSE), collapse=", "), 
+            paste(round(xlength, 2), collapse=","),
+            paste(round(tl_sp, 2), collapse=", "))
+    dim(out) = c(length(out), 1)
+    
+    out = as.data.frame(out)
+    rownames(out) = sprintf(c("population.initialization.biomass.sp%d",
+                              "population.initialization.relativebiomass.sp%d",
+                              "population.initialization.size.sp%d",
+                              "population.initialization.tl.sp%d"), isp)
+    colnames(out) = NULL
+    
+    pars[[isp+1]] = out
+    
+  }
+  
+  xoutput = list(par=pars, init=NULL)
+  class(xoutput) = c("osmose.initialization", class(xoutput))
+  
+  return(invisible(xoutput))
+  
+}
+
+
+init_sofia = function(input, file=NULL, test=FALSE, ...) {
+  
+  ow = options("warn")
+  options(warn=1)
+  on.exit(options(ow))
+  
+  conf = .readConfiguration(input)
+  # conf = .setupInitialization(conf)
+  
+  nsp = .getPar(conf, "simulation.nspecies")
+  
+  spind = .getPar(conf, "species.type") == "focal"
+  spind = gsub(names(spind)[which(spind)], pattern="species.type.sp", replacement = "") 
+  spnames = .getPar(conf, "species.name")[sprintf("species.name.sp%s", spind)]
+  spind = as.numeric(spind)
+  
+  out = vector("list", nsp)
+  names(out) = spnames
+  pars = list()
+  
+  for(sp in spind) {
+    
+    this = .getPar(conf, sp=sp)
+    iSpName = .getPar(this, "species.name")
+    
+    cat(sprintf("\nInitializing species %d (%s)\n", sp, iSpName))
+    
+    sim = list()
+    sim$cal       = read.cal(conf, sp)
+    sim$biomass   = read.biomass(conf, sp)
+    sim$yield     = read.yield(conf, sp)
+    sim$fecundity = read.fecundity(conf, sp)
+    sim$bioguess  = .getPar(.getPar(conf, sp=sp), "observed.biomass.guess")
+    isp = sprintf("osmose.initialization.data.sp%d", sp)
+    conf[[isp]]   = sim
+    
+    this = .getPar(conf, sp=sp)
+    
+    sim = .simF_ini(conf, sp, test=test)
+    sim$osmose = .initial_length_dist(sim, sp)
+    pars[[iSpName]] = as.matrix(sim$osmose)
+    out[[iSpName]] = sim
+    
+  }
+  
+  pars = as.data.frame(pars)
+  colnames(pars) = NULL
+  pars = pars[order(rownames(pars)), ]
+  
+  xoutput = list(par=pars, init=out)
+  class(xoutput) = c("osmose.initialization", class(xoutput))
+  
+  # if(!is.null(file)) osmose::write_osmose(pars, file=file, sep=" = ")
+  
+  return(invisible(xoutput))
+  
+}
+
+
 # Simulation --------------------------------------------------------------
 
 
