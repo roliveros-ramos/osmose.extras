@@ -2,8 +2,14 @@
 
 # Main --------------------------------------------------------------------
 
-
+#' @export
 .readConfiguration = function(file, usePath=TRUE, ...) {
+  
+  if(!is.null(attr(file, "path"))) file = c(file.path(attr(file, "path"), file))
+  if(!file.exists(file)) {
+    warning(sprintf("configuration file '%s' does not exist.", file))
+    return(NULL)
+  }
   
   .guessSeparator = function(Line){
     SEPARATORS = c(equal = "=", semicolon = ";",
@@ -47,17 +53,16 @@
     return(str_sub(x, 1, start - 1))
   }
   
-  .addPath = function(x, path) {
+  .addPath = function(x, path, force=FALSE) {
     if(is.null(x)) return(x)
     if(!is.character(x)) return(x)
     # if(!is.null(attr(x, "path"))) 
     # path = file.path(attr(x, "path"), path)
-    if(file.exists(file.path(path, x))) 
+    if(file.exists(file.path(path, x)) | isTRUE(force)) 
       attr(x, "path") = normalizePath(path, winslash = "/", mustWork = FALSE)
     return(x)
   }
   
-  if(!is.null(attr(file, "path"))) file = c(file.path(attr(file, "path"), file))
   
   config = readLines(file) # read lines
   config = lapply(config, .comment_trim) # remove comments
@@ -71,17 +76,27 @@
   
   names(values) = tolower(key)
   
-  if(isTRUE(usePath)) values = lapply(values, .addPath, path = dirname(file))
+  force = grepl(names(values), pattern="osmose.configuration")
+  # if(isTRUE(usePath)) values = lapply(values, .addPath, path = dirname(file))
+  
+  values = mapply(FUN=.addPath, x=values, force=force, 
+                   MoreArgs=list(path = dirname(file)), SIMPLIFY = FALSE)
+  
   
   ii = grep(names(values), pattern="osmose.configuration")
   if(length(ii) == 0) return(values)
   
+  cpath = NULL
+  
   while(length(ii) > 0) {
     
     values = append(values, .readConfiguration(values[[ii[1]]]), ii[1])
+    cpath = c(cpath, values[ii[1]])
     values = values[-ii[1]]
     ii = grep(names(values), pattern="osmose.configuration")
   }
+  
+  values = c(values, cpath)
   
   return(values)
 }
@@ -89,6 +104,7 @@
 
 # Internal ----------------------------------------------------------------
 
+#' @export
 .getPar = function(conf, par, sp=NULL, invert=FALSE) {
   if(!is.null(sp)) par = sprintf(".sp%d$", sp)
   par = tolower(par)
