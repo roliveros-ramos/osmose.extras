@@ -2,6 +2,139 @@
 # Initialization methods --------------------------------------------------
 
 
+init_ncdf = function(input, file, parameters = NULL, output = NULL, 
+                     log = "osmose.log", version = NULL, osmose = NULL, 
+                     java = "java", options = NULL, verbose = TRUE, 
+                     clean = TRUE, force = FALSE, run=TRUE, append=FALSE, ...) {
+  
+  parameters = paste("-Poutput.restart.enabled=TRUE", parameters)
+  
+  if(isTRUE(run)) {
+    run_osmose(input=input, parameters=parameters, output=output, log=log,
+               version=version, osmose=osmose, java=java,
+               options=options, verbose=verbose, clean=clean, force=force)
+  }
+  
+  rpath = file.path(output, "restart")
+  conf = .readConfiguration(input)
+  rfiles = dir(path=rpath, pattern = "\\.nc.*")
+  nf = length(rfiles)
+  
+  spnames = unlist(.getPar(conf, par="species.name")[.getPar(conf, par="species.type")=="focal"])
+  spindex = as.numeric(gsub(names(spnames), pattern="species.name.sp", replacement = ""))
+  
+  spp       = NULL 
+  abundance = NULL
+  weight    = NULL
+  length    = NULL
+  tl        = NULL
+  age       = NULL
+  
+  for(rfile in rfiles) {
+    
+    nc = nc_open(file.path(rpath, rfile))
+    
+    spp       = c(spp, ncvar_get(nc, "species"))
+    abundance = c(abundance, ncvar_get(nc, "abundance"))
+    weight    = c(weight, ncvar_get(nc, "weight"))
+    length    = c(length, ncvar_get(nc, "length"))
+    tl        = c(tl, ncvar_get(nc, "trophiclevel"))
+    age       = c(age, ncvar_get(nc, "age"))
+    
+    nc_close(nc)
+    
+  }
+  
+  biomass = 1e-6*abundance*weight
+  
+  nsp = .getPar(conf, "simulation.nspecies")
+
+  SPP       = NULL 
+  ABUNDANCE = NULL
+  WEIGHT    = NULL
+  LENGTH    = NULL
+  TL        = NULL
+  AGE       = NULL
+  
+  for(isp in spindex) {
+    
+    ind = (spp == isp)
+    iabundance = abundance[ind]
+    ibiomass = biomass[ind]
+    ilength = length[ind]
+    iweight = weight[ind]
+    itl = tl[ind]
+    iage = age[ind]
+    this = .getPar(conf, sp=isp)
+    
+    xabundance = rowsum(iabundance, group = iage)
+    xbiomass   = rowsum(ibiomass, group = iage)
+    xlength    = rowsum(ilength*iabundance, group = iage)/xabundance
+    xweight    = rowsum(iweight*iabundance, group = iage)/xabundance
+    xtl        = rowsum(itl*iabundance, group = iage)/xabundance
+    xschool    = ceiling(rowsum(rep(1, length(iage)), group = iage)/nf)
+    xage       = as.numeric(rownames(xabundance))
+    xsize      = VB(xage, this, method=1)
+    
+    bio_ini = sum(xbiomass)
+    bio_rel = as.numeric(xbiomass/bio_ini)
+    
+    tl_sp = as.numeric(xtl)
+    
+    bio = bio_ini*bio_rel/nf
+    abn = 1e6*bio/xweight/xschool
+    
+    n = sum(xschool)
+    
+    SPP       = c(SPP, rep(isp, n)) 
+    ABUNDANCE = c(ABUNDANCE, rep(abn, times=xschool))
+    WEIGHT    = c(WEIGHT, rep(xweight, times=xschool))
+    LENGTH    = c(LENGTH, rep(xlength, times=xschool))
+    TL        = c(TL, rep(tl_sp, times=xschool))
+    AGE       = c(AGE, rep(xage, times=xschool))
+    
+    
+  }
+  
+  X = rep(-1, length(SPP))
+  Y = rep(-1, length(SPP))
+ 
+  dim(SPP) = dim(ABUNDANCE) = dim(WEIGHT) = dim(LENGTH) = length(SPP)
+  dim(TL) = dim(AGE) = dim(X) = dim(Y) = length(SPP)
+  
+  init = list(species      = SPP,
+              x            = X,
+              y            = Y,
+              abundance    = ABUNDANCE,
+              age          = AGE,
+              length       = LENGTH,
+              weight       = WEIGHT,
+              trophiclevel = TL)
+  
+  dim = list(nschool=seq_along(SPP)-1)
+  
+  globalAtt = list(step=-1, species=paste(spindex, spnames, sep="=", collapse=", "))
+  
+  bname = sprintf("%s-initial_conditions.nc", .getPar(conf, "output.file.prefix"))
+  ncfile = file.path(dirname(file), bname)
+  units = c("", "scalar", "scalar", "scalar", "year", "cm", "g", "scalar")
+  prec  = c("integer", "float", "float", "double", "float", "float", "float", "float")
+  write_ncdf(x=init, filename=ncfile, dim=dim, units = units, global=globalAtt, prec=prec,
+             compression=NA, force_v4=FALSE)
+
+  # the file is only bname because we are saving in the same folder as file (relative)
+  pars = list(bname)
+  pars = as.data.frame(pars)
+  colnames(pars) = NULL
+  rownames(pars) = "population.initialization.file" 
+  xoutput = list(par=pars, init=init)
+  class(xoutput) = "osmose.initialization"
+  
+  return(invisible(xoutput))
+  
+}
+
+
 init_firstyear = function(input, file, parameters = NULL, output = NULL, 
                           log = "osmose.log", version = NULL, osmose = NULL, 
                           java = "java", options = NULL, verbose = TRUE, 
@@ -20,6 +153,9 @@ init_firstyear = function(input, file, parameters = NULL, output = NULL,
   rfiles = dir(path=rpath, pattern = "\\.nc.*")
   nf = length(rfiles)
 
+  spnames = unlist(.getPar(conf, par="species.name")[.getPar(conf, par="species.type")=="focal"])
+  spindex = as.numeric(gsub(names(spnames), pattern="species.name.sp", replacement = ""))
+  
   spp       = NULL 
   abundance = NULL
   weight    = NULL
@@ -47,7 +183,7 @@ init_firstyear = function(input, file, parameters = NULL, output = NULL,
   nsp = .getPar(conf, "simulation.nspecies")
   
   pars = list()
-  for(isp in seq_len(nsp)-1) {
+  for(isp in spindex) {
     
     ind = (spp == isp)
     iabundance = abundance[ind]
@@ -62,6 +198,7 @@ init_firstyear = function(input, file, parameters = NULL, output = NULL,
     xlength    = rowsum(ilength*iabundance, group = iage)/xabundance
     xtl        = rowsum(itl*iabundance, group = iage)/xabundance
     xage       = as.numeric(rownames(xabundance))
+    xsize      = VB(xage, this, method=1)
     
     bio_ini = sum(xbiomass)
     bio_rel = as.numeric(xbiomass/bio_ini)
@@ -70,7 +207,7 @@ init_firstyear = function(input, file, parameters = NULL, output = NULL,
     
     out = c(round(bio_ini/nf, 1), 
             paste(format(bio_rel, scientific = FALSE), collapse=", "), 
-            paste(round(xlength, 2), collapse=","),
+            paste(round(xsize, 2), collapse=","),
             paste(round(tl_sp, 2), collapse=", "))
     dim(out) = c(length(out), 1)
     
@@ -86,7 +223,7 @@ init_firstyear = function(input, file, parameters = NULL, output = NULL,
   }
   
   xoutput = list(par=pars, init=NULL)
-  class(xoutput) = c("osmose.initialization", class(xoutput))
+  class(xoutput) = "osmose.initialization"
   
   return(invisible(xoutput))
   
@@ -143,7 +280,7 @@ init_sofia = function(input, file=NULL, test=FALSE, ...) {
   pars = pars[order(rownames(pars)), ]
   
   xoutput = list(par=pars, init=out)
-  class(xoutput) = c("osmose.initialization", class(xoutput))
+  class(xoutput) = "osmose.initialization"
   
   # if(!is.null(file)) osmose::write_osmose(pars, file=file, sep=" = ")
   
@@ -206,7 +343,7 @@ init_sofia = function(input, file=NULL, test=FALSE, ...) {
                   Fguess=0, observed=list(biomass=bioguess, yield=yield_obs[1:ndt]),
                   bins=list(age=age_bins, size=size_bins), harvested=FALSE, larvalM=0)
     
-    class(output) = c("osmose.init",class(output))
+    class(output) = c("osmose.init", class(output))
     
     return(output)
     

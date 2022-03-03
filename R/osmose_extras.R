@@ -37,20 +37,25 @@ initialize_osmose = function(input, file, type="internannual", parameters = NULL
   }
   
   out = switch(type,
-    "climatology"  = init_firstyear(input=input, file=file, parameters=parameters, output=output, 
-                          log=log, version=version, osmose=osmose, 
-                          java=java, options=options, verbose=verbose, 
-                          clean=clean, force=force, run=run, append=append, ...),
-    "internannual" = init_sofia(input=input, file=file, test=run, ...),
-    stop(sprintf("Type='%s' is not supported.", type))
+               "ncdf"  = init_ncdf(input=input, file=file, parameters=parameters, output=output, 
+                                        log=log, version=version, osmose=osmose, 
+                                        java=java, options=options, verbose=verbose, 
+                                        clean=clean, force=force, run=run, append=append, ...),
+               "climatology"  = init_firstyear(input=input, file=file, parameters=parameters, output=output, 
+                                               log=log, version=version, osmose=osmose, 
+                                               java=java, options=options, verbose=verbose, 
+                                               clean=clean, force=force, run=run, append=append, ...),
+               "internannual" = init_sofia(input=input, file=file, test=run, ...),
+               stop(sprintf("Type='%s' is not supported.", type))
   )  
 
   # write the output
-  msg = sprintf("# OSMOSE initialization configuration - do not edit by hand (%s)\n", date())
+  msg = sprintf("# OSMOSE initialization configuration (created %s)\n", date())
   cat(msg, file=file, append=append)
-  suppressWarnings(write_osmose(out, file=file, sep=" = ", append=TRUE))
+  cat("# Do not edit by hand.\n", file=file, append=TRUE)
+  suppressWarnings(write_osmose(out, file=file, append=TRUE))
   
-    return(invisible(out))
+  return(invisible(out))
     
 }
 
